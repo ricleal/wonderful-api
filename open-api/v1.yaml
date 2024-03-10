@@ -1,0 +1,118 @@
+openapi: 3.1.0
+info:
+  title: My Wonderful API
+  version: 1.0.0
+tags:
+  - name: Wonderfuls
+    description: Operations about wonderfuls
+  - name: Populate
+    description: Operations to populate the database
+
+
+# Define paths for the API endpoints
+paths:
+  /populate:
+    post:
+      summary: Populate database with random users
+      description: Adds 5,000 random user entries from Randomuser.com API.
+      responses:
+        '201':
+          description: Success
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /wonderfuls:
+    get:
+      summary: Get list of users
+      description: Returns a list of users with optional filtering and pagination.
+      parameters:
+        - name: limit
+          in: query
+          description: Limit the number of returned users (1-100)
+          schema:
+            type: integer
+          minimum: 1
+          maximum: 100
+          default: 10
+        - name: starting_after
+          in: query
+          description: User ID to start pagination after
+          schema:
+            type: string
+        - name: ending_before
+          in: query
+          description: User ID to start pagination before
+          schema:
+            type: string
+        - name: email
+          in: query
+          description: Filter by user's email (case-insensitive)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+# Define schema for the Wonderful object
+components:
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: object
+          properties:
+            main:
+              type: string
+            cell:
+              type: string
+        picture:
+          type: object
+          properties:
+            large:
+              type: string
+            medium:
+              type: string
+            thumbnail:
+              type: string
+        registration_date:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - email
+        - registration_date
+    Error:
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Error code
+        message:
+          type: string
+          description: Error message
