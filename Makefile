@@ -7,9 +7,10 @@ SHELL := /bin/bash
 DB_HOSTNAME ?= localhost
 DB_PORT ?= 5432
 DB_NAME ?= wonderful
-DB_USERNAME ?= $(USERNAME)
+DB_USERNAME ?= postgres
+DB_PASSWORD ?= postgres1234
 
-DB_URL ?= "postgres://$(DB_USERNAME)@$(DB_HOSTNAME):$(DB_PORT)/$(DB_NAME)?sslmode=disable"
+DB_URL ?= "postgres://$(DB_USERNAME):$(DB_PASSWORD)@$(DB_HOSTNAME):$(DB_PORT)/$(DB_NAME)?sslmode=disable"
 
 MIGRATIONS_PATH ?= $(shell pwd)/migrations
 
@@ -21,16 +22,16 @@ ENV_VARS = \
 	DB_PORT=$(DB_PORT) \
 	DB_NAME=$(DB_NAME) \
 	DB_USERNAME=$(DB_USERNAME) \
+	DB_PASSWORD=$(DB_PASSWORD) \
 	LOG_LEVEL=$(LOG_LEVEL) \
 	API_PORT=$(API_PORT) \
 	DB_URL=$(DB_URL) \
 	$(NULL)
 
-
 ## Development targets
 
 .PHONY: dev
-dev: ## Run development server
+dev: db-migrate-up ## Run development server
 	DB_URL=$(DB_URL) LOG_LEVEL=$(LOG_LEVEL) go run ./cmd/wonderful -port $(API_PORT)
 
 .PHONY: test
@@ -47,16 +48,16 @@ lint: ## Lint and format source code based on golangci configuration
 
 .PHONY: db-start
 db-start: ## Postgres start
-	@$(ENV_VARS) docker-compose -f docker-compose-db.yaml -p db up --detach postgres-dev
+	@$(ENV_VARS) docker compose -f docker-compose-db.yaml -p db up --detach postgres-dev
 
 .PHONY: db-stop
 db-stop: ## Postgres stop
-	@$(ENV_VARS) docker-compose -f docker-compose-db.yaml -p db stop postgres-dev
+	@$(ENV_VARS) docker compose -f docker-compose-db.yaml -p db stop postgres-dev
 
 .PHONY: db-cli
 db-cli: ## Start the Postgres CLI
 	@command -v pgcli || (echo "Please install `pgcli`." && exit 1)
-	pgcli -h $(DB_HOSTNAME) -u $(DB_USERNAME) -p $(DB_PORT) -d $(DB_NAME)
+	@PGPASSWORD=$(DB_PASSWORD) pgcli -h $(DB_HOSTNAME) -u $(DB_USERNAME) -p $(DB_PORT) -d $(DB_NAME)
 
 ### DB migration targets
 
@@ -118,8 +119,8 @@ help:
 
 .PHONY: docker-up
 docker-up: ## Run docker container
-	@$(ENV_VARS) docker-compose -f docker-compose.yaml up --build
+	$(ENV_VARS) docker compose -f docker-compose.yaml up --build
 
 .PHONY: docker-down
 docker-down: ## Stop docker container
-	@$(ENV_VARS) docker-compose -f docker-compose.yaml down
+	@$(ENV_VARS) docker compose -f docker-compose.yaml down

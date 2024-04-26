@@ -13,27 +13,27 @@ import (
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-	// Get list of users
-	// (GET /wonderfuls)
-	GetWonderfuls(w http.ResponseWriter, r *http.Request, params GetWonderfulsParams)
 	// Populate database with random users
 	// (POST /populate)
 	PostPopulate(w http.ResponseWriter, r *http.Request)
+	// Get list of users
+	// (GET /wonderfuls)
+	GetWonderfuls(w http.ResponseWriter, r *http.Request, params GetWonderfulsParams)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
 
-// Get list of users
-// (GET /wonderfuls)
-func (_ Unimplemented) GetWonderfuls(w http.ResponseWriter, r *http.Request, params GetWonderfulsParams) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
 // Populate database with random users
 // (POST /populate)
 func (_ Unimplemented) PostPopulate(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get list of users
+// (GET /wonderfuls)
+func (_ Unimplemented) GetWonderfuls(w http.ResponseWriter, r *http.Request, params GetWonderfulsParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -45,6 +45,21 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// PostPopulate operation middleware
+func (siw *ServerInterfaceWrapper) PostPopulate(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostPopulate(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
 
 // GetWonderfuls operation middleware
 func (siw *ServerInterfaceWrapper) GetWonderfuls(w http.ResponseWriter, r *http.Request) {
@@ -89,21 +104,6 @@ func (siw *ServerInterfaceWrapper) GetWonderfuls(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetWonderfuls(w, r, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r.WithContext(ctx))
-}
-
-// PostPopulate operation middleware
-func (siw *ServerInterfaceWrapper) PostPopulate(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.PostPopulate(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -227,10 +227,10 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	}
 
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/wonderfuls", wrapper.GetWonderfuls)
+		r.Post(options.BaseURL+"/populate", wrapper.PostPopulate)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/populate", wrapper.PostPopulate)
+		r.Get(options.BaseURL+"/wonderfuls", wrapper.GetWonderfuls)
 	})
 
 	return r

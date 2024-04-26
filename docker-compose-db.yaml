@@ -1,16 +1,16 @@
-version: "3.7"
 services:
   postgres-dev:
     image: postgres:16.2
     environment:
-      POSTGRES_HOST_AUTH_METHOD: trust
       POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     ports:
       - ${DB_PORT}:${DB_PORT}
     command: >
       -c logging_collector=on
-      -c log_directory=/var/lib/postgresql/log
+      -c log_directory=/var/log/postgresql
       -c log_filename=postgresql.log
       -c log_statement=all
     volumes:
-      - /tmp/postgresql/log:/var/lib/postgresql/log
+      - ./volumes/postgresql/data:/var/lib/postgresql/data
