@@ -4,11 +4,13 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"wonderful/internal/api/testhelpers"
 	api "wonderful/internal/api/v1"
 	"wonderful/internal/api/v1/openapi"
+	authmiddleware "wonderful/internal/middleware"
 	"wonderful/internal/repository/db"
 	"wonderful/internal/repository/db/test"
 	"wonderful/internal/service"
@@ -38,6 +40,10 @@ func TestAPITestIntegrationSuite(t *testing.T) {
 func (ts *APITestIntegrationSuite) SetupSuite() {
 	var err error
 	ctx := context.Background()
+
+	// Set JWT secret for testing
+	os.Setenv("JWT_SECRET", testhelpers.TestJWTSecret)
+
 	ts.container, err = test.SetupDB(ctx)
 	require.NoError(ts.T(), err)
 	ts.s, err = db.NewStorage(ctx)
@@ -53,6 +59,10 @@ func (ts *APITestIntegrationSuite) SetupSuite() {
 	swagger, err := openapi.GetSwagger()
 	require.NoError(ts.T(), err)
 	r.Use(middleware.OapiRequestValidator(swagger))
+
+	// Apply JWT authentication middleware
+	r.Use(authmiddleware.JWTAuth)
+
 	openapi.HandlerFromMux(wonderfulAPI, r)
 	ts.server = httptest.NewServer(r)
 }
@@ -66,52 +76,67 @@ func (ts *APITestIntegrationSuite) TearDownSuite() {
 
 func (ts *APITestIntegrationSuite) TestUsers() {
 	ctx := context.Background()
-	var response []openapi.User
 
-	statusCode, err := testhelpers.Get(ctx, ts.server.URL+"/wonderfuls", &response)
+	// Test constants
+	const testUserID = "test-user-123"
+	const testEmail = "test@example.com"
+
+	// Test that requests without JWT token are rejected
+	var errorResponse openapi.Error
+	statusCode, err := testhelpers.Get(ctx, ts.server.URL+"/wonderfuls", &errorResponse)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusUnauthorized, statusCode)
+	ts.Require().Equal(int32(401), errorResponse.Code)
+
+	// Test with valid JWT token - should get empty list initially
+	var response []openapi.User
+	statusCode, err = testhelpers.GetWithJWT(ctx, ts.server.URL+"/wonderfuls", testUserID, testEmail, &response)
 	ts.Require().NoError(err)
 	ts.Require().Equal(http.StatusOK, statusCode)
 	ts.Require().Len(response, 0)
 
 	// Populate the database
 	var responseEmpty struct{}
-	statusCode, err = testhelpers.Post(ctx, ts.server.URL+"/populate", "", &responseEmpty)
+	statusCode, err = testhelpers.PostWithJWT(ctx, ts.server.URL+"/populate", testUserID, testEmail, "", &responseEmpty)
 	ts.Require().NoError(err)
 	ts.Require().Equal(201, statusCode)
 
 	// Get default number of users
-	statusCode, err = testhelpers.Get(ctx, ts.server.URL+"/wonderfuls", &response)
+	statusCode, err = testhelpers.GetWithJWT(ctx, ts.server.URL+"/wonderfuls", testUserID, testEmail, &response)
 	ts.Require().NoError(err)
 	ts.Require().Equal(http.StatusOK, statusCode)
 	ts.Require().Len(response, 10)
 
 	// Get 50 users
-	statusCode, err = testhelpers.Get(ctx, ts.server.URL+"/wonderfuls?limit=50", &response)
+	statusCode, err = testhelpers.GetWithJWT(ctx, ts.server.URL+"/wonderfuls?limit=50", testUserID, testEmail, &response)
 	ts.Require().NoError(err)
 	ts.Require().Equal(http.StatusOK, statusCode)
 	ts.Require().Len(response, 50)
 	ts.Require().Greater(response[0].RegistrationDate, response[49].RegistrationDate)
 
 	// invalid limit
-	var errorResponse openapi.Error
-	statusCode, err = testhelpers.Get(ctx, ts.server.URL+"/wonderfuls?limit=0", &errorResponse)
+	errorResponse = openapi.Error{} // Reset error response
+	statusCode, err = testhelpers.GetWithJWT(ctx, ts.server.URL+"/wonderfuls?limit=0", testUserID, testEmail, &errorResponse)
 	ts.Require().NoError(err)
 	ts.Require().Equal(http.StatusBadRequest, statusCode)
 	ts.Require().Equal("invalid limit: limit must be between 1 and 100", errorResponse.Message)
-	statusCode, err = testhelpers.Get(ctx, ts.server.URL+"/wonderfuls?limit=150", &errorResponse)
+
+	errorResponse = openapi.Error{} // Reset error response
+	statusCode, err = testhelpers.GetWithJWT(ctx, ts.server.URL+"/wonderfuls?limit=150", testUserID, testEmail, &errorResponse)
 	ts.Require().NoError(err)
 	ts.Require().Equal(http.StatusBadRequest, statusCode)
 	ts.Require().Equal("invalid limit: limit must be between 1 and 100", errorResponse.Message)
 
 	// starting_after and ending_before
-	statusCode, err = testhelpers.Get(ctx, ts.server.URL+"/wonderfuls?starting_after=1&ending_before=2", &errorResponse)
+	errorResponse = openapi.Error{} // Reset error response
+	statusCode, err = testhelpers.GetWithJWT(ctx, ts.server.URL+"/wonderfuls?starting_after=1&ending_before=2", testUserID, testEmail, &errorResponse)
 	ts.Require().NoError(err)
 	ts.Require().Equal(http.StatusBadRequest, statusCode)
 	ts.Require().Equal("invalid startingAfter and endingBefore: only one of them can be used", errorResponse.Message)
 
 	// starting_after
 	var response2ndPage []openapi.User
-	statusCode, err = testhelpers.Get(ctx, ts.server.URL+"/wonderfuls?limit=50&starting_after="+response[49].Id, &response2ndPage)
+	statusCode, err = testhelpers.GetWithJWT(ctx, ts.server.URL+"/wonderfuls?limit=50&starting_after="+response[49].Id, testUserID, testEmail, &response2ndPage)
 	ts.Require().NoError(err)
 	ts.Require().Equal(http.StatusOK, statusCode)
 	ts.Require().Len(response2ndPage, 50)
@@ -122,7 +147,7 @@ func (ts *APITestIntegrationSuite) TestUsers() {
 
 	// ending_before
 	var response1stPage []openapi.User
-	statusCode, err = testhelpers.Get(ctx, ts.server.URL+"/wonderfuls?limit=50&ending_before="+response2ndPage[0].Id, &response1stPage)
+	statusCode, err = testhelpers.GetWithJWT(ctx, ts.server.URL+"/wonderfuls?limit=50&ending_before="+response2ndPage[0].Id, testUserID, testEmail, &response1stPage)
 	ts.Require().NoError(err)
 	ts.Require().Equal(http.StatusOK, statusCode)
 	ts.Require().Len(response1stPage, 50)
@@ -134,23 +159,23 @@ func (ts *APITestIntegrationSuite) TestUsers() {
 	}
 
 	// email
-	statusCode, err = testhelpers.Get(ctx, ts.server.URL+"/wonderfuls?email="+response[0].Email, &response)
+	statusCode, err = testhelpers.GetWithJWT(ctx, ts.server.URL+"/wonderfuls?email="+response[0].Email, testUserID, testEmail, &response)
 	ts.Require().NoError(err)
 	ts.Require().Equal(http.StatusOK, statusCode)
 	ts.Require().Len(response, 1)
 
 	// email not found
-	statusCode, err = testhelpers.Get(ctx, ts.server.URL+"/wonderfuls?email=notfound", &response)
+	statusCode, err = testhelpers.GetWithJWT(ctx, ts.server.URL+"/wonderfuls?email=notfound", testUserID, testEmail, &response)
 	ts.Require().NoError(err)
 	ts.Require().Equal(http.StatusOK, statusCode)
 	ts.Require().Len(response, 0)
 
 	// partial email
-	statusCode, err = testhelpers.Get(ctx, ts.server.URL+"/wonderfuls?email="+response2ndPage[0].Email[:5], &response)
+	statusCode, err = testhelpers.GetWithJWT(ctx, ts.server.URL+"/wonderfuls?email="+response2ndPage[0].Email[:5], testUserID, testEmail, &response)
 	ts.Require().NoError(err)
 	ts.Require().Equal(http.StatusOK, statusCode)
 	ts.Require().Greater(len(response), 0)
-	statusCode, err = testhelpers.Get(ctx, ts.server.URL+"/wonderfuls?email="+response2ndPage[0].Email[5:], &response)
+	statusCode, err = testhelpers.GetWithJWT(ctx, ts.server.URL+"/wonderfuls?email="+response2ndPage[0].Email[5:], testUserID, testEmail, &response)
 	ts.Require().NoError(err)
 	ts.Require().Equal(http.StatusOK, statusCode)
 	ts.Require().Greater(len(response), 0)
@@ -158,11 +183,11 @@ func (ts *APITestIntegrationSuite) TestUsers() {
 	// SQL injection and make sure the database is not affected
 	// '; DROP TABLE users; --
 	s := "%27%3B%20DROP%20TABLE%20users%3B%20--"
-	statusCode, err = testhelpers.Get(ctx, ts.server.URL+"/wonderfuls?email="+s, &response)
+	statusCode, err = testhelpers.GetWithJWT(ctx, ts.server.URL+"/wonderfuls?email="+s, testUserID, testEmail, &response)
 	ts.Require().NoError(err)
 	ts.Require().Equal(http.StatusOK, statusCode)
 	ts.Require().Len(response, 0)
-	statusCode, err = testhelpers.Get(ctx, ts.server.URL+"/wonderfuls", &response)
+	statusCode, err = testhelpers.GetWithJWT(ctx, ts.server.URL+"/wonderfuls", testUserID, testEmail, &response)
 	ts.Require().NoError(err)
 	ts.Require().Equal(http.StatusOK, statusCode)
 	ts.Require().Len(response, 10)

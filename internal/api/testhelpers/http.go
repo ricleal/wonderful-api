@@ -9,12 +9,65 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 const (
 	contentTypeKey   = "Content-Type"
-	contentTypeValue = "application/vnd.api+json"
+	contentTypeValue = "application/json" // Changed from application/vnd.api+json
+	// Default JWT secret for testing
+	TestJWTSecret = "test-jwt-secret-at-least-32-characters-long-for-security"
 )
+
+// JWTClaims represents the JWT claims structure for testing
+type JWTClaims struct {
+	UserID string `json:"user_id"`
+	Email  string `json:"email"`
+	jwt.RegisteredClaims
+}
+
+// GenerateTestJWT generates a JWT token for testing purposes
+func GenerateTestJWT(userID, email string, duration time.Duration) (string, error) {
+	now := time.Now()
+	claims := JWTClaims{
+		UserID: userID,
+		Email:  email,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(now.Add(duration)),
+			IssuedAt:  jwt.NewNumericDate(now),
+			NotBefore: jwt.NewNumericDate(now),
+			Issuer:    "wonderful-api",
+			Subject:   userID,
+			ID:        fmt.Sprintf("jwt-test-%d", now.Unix()),
+			Audience:  []string{"wonderful-api"},
+		},
+	}
+
+	// Create token with claims
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+
+	// Generate encoded token
+	tokenString, err := token.SignedString([]byte(TestJWTSecret))
+	if err != nil {
+		return "", fmt.Errorf("failed to generate JWT token: %w", err)
+	}
+
+	return tokenString, nil
+}
+
+// GetJWTHeaders returns headers with a valid JWT token for testing
+func GetJWTHeaders(userID, email string) (map[string]string, error) {
+	token, err := GenerateTestJWT(userID, email, 24*time.Hour)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]string{
+		"Authorization": "Bearer " + token,
+	}, nil
+}
 
 func parseResponse(req *http.Request, response interface{}) (int, error) {
 	client := &http.Client{}
@@ -139,4 +192,22 @@ func DeleteWithHeaders(ctx context.Context, theURL string, headers map[string]st
 		return 0, fmt.Errorf("failed to DELETE request: %w", err)
 	}
 	return parseResponse(req, response)
+}
+
+// GetWithJWT executes an HTTP GET request with JWT authentication
+func GetWithJWT(ctx context.Context, theURL, userID, email string, response interface{}) (statusCode int, err error) {
+	headers, err := GetJWTHeaders(userID, email)
+	if err != nil {
+		return 0, fmt.Errorf("failed to generate JWT headers: %w", err)
+	}
+	return GetWithHeaders(ctx, theURL, headers, response)
+}
+
+// PostWithJWT executes an HTTP POST request with JWT authentication
+func PostWithJWT(ctx context.Context, theURL, userID, email, body string, response interface{}) (statusCode int, err error) {
+	headers, err := GetJWTHeaders(userID, email)
+	if err != nil {
+		return 0, fmt.Errorf("failed to generate JWT headers: %w", err)
+	}
+	return PostWithHeaders(ctx, theURL, headers, body, response)
 }

@@ -31,10 +31,27 @@ func init() {
 }
 
 func setupContainer(ctx context.Context) (*postgres.PostgresContainer, error) {
-	dbname := os.Getenv("DB_NAME") + "_test"
+	// Set default values if environment variables are not set
+	dbname := os.Getenv("DB_NAME")
+	if dbname == "" {
+		dbname = "wonderful"
+	}
+	dbname += "_test"
+
 	user := os.Getenv("DB_USERNAME")
+	if user == "" {
+		user = "postgres"
+	}
+
 	password := os.Getenv("DB_PASSWORD")
+	if password == "" {
+		password = "postgres1234"
+	}
+
 	port := os.Getenv("DB_PORT")
+	if port == "" {
+		port = "5432"
+	}
 
 	container, err := postgres.RunContainer(ctx,
 		testcontainers.WithImage("docker.io/postgres:16.2"),
@@ -43,7 +60,7 @@ func setupContainer(ctx context.Context) (*postgres.PostgresContainer, error) {
 		postgres.WithPassword(password),
 		testcontainers.WithWaitStrategy(
 			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).WithStartupTimeout(5*time.Second),
+				WithOccurrence(2).WithStartupTimeout(30*time.Second), // Increased timeout
 		),
 		testcontainers.CustomizeRequest(testcontainers.GenericContainerRequest{
 			ContainerRequest: testcontainers.ContainerRequest{
@@ -89,6 +106,11 @@ func setupMigrations(_ context.Context) error {
 	}
 
 	migrationsPath := os.Getenv("MIGRATIONS_PATH")
+	if migrationsPath == "" {
+		// Try to find migrations relative to the project root
+		migrationsPath = "../../../../migrations"
+	}
+
 	m, err := migrate.NewWithDatabaseInstance(
 		"file://"+migrationsPath,
 		"postgres", driver)

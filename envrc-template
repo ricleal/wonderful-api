@@ -7,3 +7,4 @@ export DB_PASSWORD=postgres
 export API_PORT=8888
 export MIGRATIONS_PATH=/home/ricardo/git/wonderful-backend-assignment/migrations
 export LOG_LEVEL=debug
+export JWT_SECRET=your-super-secret-jwt-key-at-least-32-characters-long-for-security
