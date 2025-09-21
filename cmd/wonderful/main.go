@@ -26,8 +26,8 @@ import (
 	"wonderful/internal/store"
 )
 
-func apiV1Router(root *chi.Mux, su service.UserService) error {
-	wonderfulAPI := apiv1.New(su)
+func apiV1Router(root *chi.Mux, su service.UserService, hs service.HealthService) error {
+	wonderfulAPI := apiv1.New(su, hs)
 
 	swagger, err := openapiv1.GetSwagger()
 	if err != nil {
@@ -54,6 +54,9 @@ func apiV1Router(root *chi.Mux, su service.UserService) error {
 				return
 			}
 		})
+
+		// Add health check endpoint (without JWT protection)
+		r.Get("/health", wonderfulAPI.GetHealth)
 
 		// Create a sub-group for protected API endpoints
 		r.Group(func(r chi.Router) {
@@ -114,6 +117,7 @@ func main() {
 	c := http.Client{Timeout: 10 * time.Second}
 	s := store.NewPersistentStore(dbServer.Pool())
 	su := service.NewUserService(s, c)
+	hs := service.NewHealthService(s)
 
 	// Set up the root router
 	root := chi.NewRouter()
@@ -122,7 +126,7 @@ func main() {
 	root.Use(middleware.StripSlashes)
 
 	// Set up API v1
-	if err := apiV1Router(root, su); err != nil {
+	if err := apiV1Router(root, su, hs); err != nil {
 		slog.Error("error setting up api v1 router", "error", err)
 		return
 	}

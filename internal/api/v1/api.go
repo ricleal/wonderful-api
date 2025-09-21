@@ -12,13 +12,15 @@ import (
 
 // wonderfulAPI is the implementation of the API.
 type wonderfulAPI struct {
-	userService service.UserService
+	userService   service.UserService
+	healthService service.HealthService
 }
 
 // New returns a new wonderfulAPI.
-func New(userService service.UserService) *wonderfulAPI {
+func New(userService service.UserService, healthService service.HealthService) *wonderfulAPI {
 	return &wonderfulAPI{
-		userService: userService,
+		userService:   userService,
+		healthService: healthService,
 	}
 }
 
@@ -104,4 +106,33 @@ func (c *wonderfulAPI) PostPopulate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusCreated)
+}
+
+// GetHealth returns the health status of the application
+func (c *wonderfulAPI) GetHealth(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// Check database connectivity
+	if err := c.healthService.CheckDatabase(ctx); err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		response := map[string]interface{}{
+			"status":   "unhealthy",
+			"database": "disconnected",
+			"error":    err.Error(),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(response)
+		return
+	}
+
+	// Get connection stats
+	stats := c.healthService.GetDatabaseStats()
+
+	w.Header().Set("Content-Type", "application/json")
+	response := map[string]interface{}{
+		"status":           "healthy",
+		"database":         "connected",
+		"connection_stats": stats,
+	}
+	_ = json.NewEncoder(w).Encode(response)
 }

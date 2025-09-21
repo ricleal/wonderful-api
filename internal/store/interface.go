@@ -10,4 +10,6 @@ import (
 type Store interface {
 	Users() repository.UserRepository
 	ExecTx(ctx context.Context, fn func(Store) error) error
+	Ping(ctx context.Context) error
+	GetConnectionStats() map[string]interface{}
 }

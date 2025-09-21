@@ -8,3 +8,10 @@ export API_PORT=8888
 export MIGRATIONS_PATH=/home/ricardo/git/wonderful-backend-assignment/migrations
 export LOG_LEVEL=debug
 export JWT_SECRET=your-super-secret-jwt-key-at-least-32-characters-long-for-security
+
+# Database connection pool configuration
+export DB_MAX_CONNECTIONS=25
+export DB_MIN_CONNECTIONS=5
+export DB_MAX_CONN_LIFETIME=1h
+export DB_MAX_CONN_IDLE_TIME=30m
+export DB_HEALTH_CHECK_PERIOD=1m
