@@ -52,9 +52,10 @@ func (ts *APITestIntegrationSuite) SetupSuite() {
 	s := store.NewPersistentStore(ts.s.Pool())
 	c := http.Client{}
 	su := service.NewUserService(s, c)
+	sh := service.NewHealthService(s)
 
 	// set up our API
-	wonderfulAPI := api.New(su)
+	wonderfulAPI := api.New(su, sh)
 	r := chi.NewRouter()
 	swagger, err := openapi.GetSwagger()
 	require.NoError(ts.T(), err)
@@ -101,13 +102,32 @@ func (ts *APITestIntegrationSuite) TestUsers() {
 	ts.Require().NoError(err)
 	ts.Require().Equal(201, statusCode)
 
-	// Get default number of users
+	// Get default number of users (should be 20 according to API spec)
 	statusCode, err = testhelpers.GetWithJWT(ctx, ts.server.URL+"/wonderfuls", testUserID, testEmail, &response)
 	ts.Require().NoError(err)
 	ts.Require().Equal(http.StatusOK, statusCode)
-	ts.Require().Len(response, 10)
+	ts.Require().Len(response, 20) // Updated to match API spec default
 
-	// Get 50 users
+	// Test boundary limits
+	// Test minimum limit (1)
+	statusCode, err = testhelpers.GetWithJWT(ctx, ts.server.URL+"/wonderfuls?limit=1", testUserID, testEmail, &response)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, statusCode)
+	ts.Require().Len(response, 1)
+
+	// Test maximum limit (100)
+	statusCode, err = testhelpers.GetWithJWT(ctx, ts.server.URL+"/wonderfuls?limit=100", testUserID, testEmail, &response)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, statusCode)
+	ts.Require().Len(response, 100)
+
+	// Test moderate limit (5)
+	statusCode, err = testhelpers.GetWithJWT(ctx, ts.server.URL+"/wonderfuls?limit=5", testUserID, testEmail, &response)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, statusCode)
+	ts.Require().Len(response, 5)
+
+	// Get 50 users for pagination testing
 	statusCode, err = testhelpers.GetWithJWT(ctx, ts.server.URL+"/wonderfuls?limit=50", testUserID, testEmail, &response)
 	ts.Require().NoError(err)
 	ts.Require().Equal(http.StatusOK, statusCode)
@@ -117,6 +137,12 @@ func (ts *APITestIntegrationSuite) TestUsers() {
 	// invalid limit
 	errorResponse = openapi.Error{} // Reset error response
 	statusCode, err = testhelpers.GetWithJWT(ctx, ts.server.URL+"/wonderfuls?limit=0", testUserID, testEmail, &errorResponse)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusBadRequest, statusCode)
+	ts.Require().Equal("invalid limit: limit must be between 1 and 100", errorResponse.Message)
+
+	errorResponse = openapi.Error{} // Reset error response
+	statusCode, err = testhelpers.GetWithJWT(ctx, ts.server.URL+"/wonderfuls?limit=101", testUserID, testEmail, &errorResponse)
 	ts.Require().NoError(err)
 	ts.Require().Equal(http.StatusBadRequest, statusCode)
 	ts.Require().Equal("invalid limit: limit must be between 1 and 100", errorResponse.Message)
@@ -190,5 +216,5 @@ func (ts *APITestIntegrationSuite) TestUsers() {
 	statusCode, err = testhelpers.GetWithJWT(ctx, ts.server.URL+"/wonderfuls", testUserID, testEmail, &response)
 	ts.Require().NoError(err)
 	ts.Require().Equal(http.StatusOK, statusCode)
-	ts.Require().Len(response, 10)
+	ts.Require().Len(response, 20)
 }

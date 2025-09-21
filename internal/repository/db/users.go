@@ -28,9 +28,9 @@ func NewUserStorage(dbConn sqlc.DBTX) *UserStorage {
 
 func formatParameters(p repository.Params) sqlc.ListUsersParams {
 	params := sqlc.ListUsersParams{}
-	// This is for safety. The API by default returns a limit of 10.
+	// This is for safety. The API by default returns a limit of 20.
 	if p.Limit == 0 {
-		p.Limit = 10
+		p.Limit = 20
 	}
 	params.Limit = int32(p.Limit)
 	// Email
