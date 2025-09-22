@@ -10,5 +10,6 @@ import (
 // UserService is a domain service for users.
 type UserService interface {
 	ListUsers(ctx context.Context, p repository.Params) ([]entities.User, error)
+	GetUserByID(ctx context.Context, id string) (*entities.User, error)
 	Create(ctx context.Context) error
 }

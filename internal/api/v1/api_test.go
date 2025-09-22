@@ -218,3 +218,96 @@ func (ts *APITestIntegrationSuite) TestUsers() {
 	ts.Require().Equal(http.StatusOK, statusCode)
 	ts.Require().Len(response, 20)
 }
+
+func (ts *APITestIntegrationSuite) TestGetUserByID() {
+	ctx := context.Background()
+
+	// Test constants
+	const testUserID = "test-user-456"
+	const testEmail = "test2@example.com"
+
+	// Test that requests without JWT token are rejected
+	var errorResponse openapi.Error
+	statusCode, err := testhelpers.Get(ctx, ts.server.URL+"/wonderfuls/some-id", &errorResponse)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusUnauthorized, statusCode)
+	ts.Require().Equal(int32(401), errorResponse.Code)
+
+	// Check if we need to populate the database (it might already be populated by other tests)
+	var usersList []openapi.User
+	statusCode, err = testhelpers.GetWithJWT(ctx, ts.server.URL+"/wonderfuls?limit=1", testUserID, testEmail, &usersList)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, statusCode)
+
+	// If no users exist, populate the database
+	if len(usersList) == 0 {
+		var responseEmpty struct{}
+		statusCode, err = testhelpers.PostWithJWT(ctx, ts.server.URL+"/populate", testUserID, testEmail, "", &responseEmpty)
+		ts.Require().NoError(err)
+		ts.Require().Equal(201, statusCode)
+
+		// Get the list again after populating
+		statusCode, err = testhelpers.GetWithJWT(ctx, ts.server.URL+"/wonderfuls?limit=1", testUserID, testEmail, &usersList)
+		ts.Require().NoError(err)
+		ts.Require().Equal(http.StatusOK, statusCode)
+	}
+
+	ts.Require().True(len(usersList) > 0, "Should have at least one user after populating")
+	validUserID := usersList[0].Id
+
+	// Test 1: Get existing user by valid ID
+	var singleUser openapi.User
+	statusCode, err = testhelpers.GetWithJWT(ctx, ts.server.URL+"/wonderfuls/"+validUserID, testUserID, testEmail, &singleUser)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, statusCode)
+	ts.Require().Equal(validUserID, singleUser.Id)
+	ts.Require().Equal(usersList[0].Name, singleUser.Name)
+	ts.Require().Equal(usersList[0].Email, singleUser.Email)
+	ts.Require().Equal(usersList[0].RegistrationDate, singleUser.RegistrationDate)
+	ts.Require().NotNil(singleUser.Phone)
+	ts.Require().NotNil(singleUser.Picture)
+
+	// Test 2: Get user with invalid/non-existent ID (valid format but doesn't exist)
+	invalidButValidID := "1srOrx2ZWZBpBUvZ6XwqQuLoK9b" // Valid KSUID format but doesn't exist
+	errorResponse = openapi.Error{}                    // Reset error response
+	statusCode, err = testhelpers.GetWithJWT(ctx, ts.server.URL+"/wonderfuls/"+invalidButValidID, testUserID, testEmail, &errorResponse)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusNotFound, statusCode)
+	ts.Require().Equal("User not found", errorResponse.Message)
+
+	// Test 3: Get user with completely invalid ID format
+	invalidFormatID := "invalid-id-123"
+	errorResponse = openapi.Error{} // Reset error response
+	statusCode, err = testhelpers.GetWithJWT(ctx, ts.server.URL+"/wonderfuls/"+invalidFormatID, testUserID, testEmail, &errorResponse)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusNotFound, statusCode) // Invalid format is treated as not found for security
+	ts.Require().Contains(errorResponse.Message, "User not found")
+
+	// Test 4: Verify that the retrieved user matches exactly with the one from the list
+	var allUsers []openapi.User
+	statusCode, err = testhelpers.GetWithJWT(ctx, ts.server.URL+"/wonderfuls", testUserID, testEmail, &allUsers)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, statusCode)
+
+	// Find the user in the list and verify it matches the single user response
+	var foundInList bool
+	for _, user := range allUsers {
+		if user.Id == validUserID {
+			foundInList = true
+			ts.Require().Equal(user.Name, singleUser.Name)
+			ts.Require().Equal(user.Email, singleUser.Email)
+			ts.Require().Equal(user.RegistrationDate, singleUser.RegistrationDate)
+			if user.Phone != nil && singleUser.Phone != nil {
+				ts.Require().Equal(user.Phone.Cell, singleUser.Phone.Cell)
+				ts.Require().Equal(user.Phone.Main, singleUser.Phone.Main)
+			}
+			if user.Picture != nil && singleUser.Picture != nil {
+				ts.Require().Equal(user.Picture.Large, singleUser.Picture.Large)
+				ts.Require().Equal(user.Picture.Medium, singleUser.Picture.Medium)
+				ts.Require().Equal(user.Picture.Thumbnail, singleUser.Picture.Thumbnail)
+			}
+			break
+		}
+	}
+	ts.Require().True(foundInList, "User should be found in the list response")
+}

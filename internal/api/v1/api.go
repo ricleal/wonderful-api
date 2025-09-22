@@ -108,6 +108,53 @@ func (c *wonderfulAPI) PostPopulate(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 }
 
+// GetWonderfulsUserId returns a single user by ID.
+func (c *wonderfulAPI) GetWonderfulsUserId(w http.ResponseWriter, r *http.Request, userId string) {
+	ctx := r.Context()
+
+	user, err := c.userService.GetUserByID(ctx, userId)
+	if err != nil {
+		if errors.Is(err, service.ErrUserNotFound) {
+			sendAPIError(ctx, w, http.StatusNotFound, "User not found", err)
+			return
+		}
+		sendAPIError(ctx, w, http.StatusInternalServerError, "Error getting user", err)
+		return
+	}
+
+	// Convert entities.User to openapi.User
+	picLarge := user.Picture["large"]
+	picMedium := user.Picture["medium"]
+	picThumbnail := user.Picture["thumbnail"]
+	cellPhone := user.Cell
+	mainPhone := user.Phone
+
+	openapiUser := openapi.User{
+		Email: user.Email,
+		Id:    user.ID,
+		Name:  user.Name,
+		Phone: &struct {
+			Cell *string "json:\"cell,omitempty\""
+			Main *string "json:\"main,omitempty\""
+		}{
+			Cell: &cellPhone,
+			Main: &mainPhone,
+		},
+		Picture: &struct {
+			Large     *string "json:\"large,omitempty\""
+			Medium    *string "json:\"medium,omitempty\""
+			Thumbnail *string "json:\"thumbnail,omitempty\""
+		}{
+			Large:     &picLarge,
+			Medium:    &picMedium,
+			Thumbnail: &picThumbnail,
+		},
+		RegistrationDate: user.Registration,
+	}
+
+	json.NewEncoder(w).Encode(openapiUser) //nolint:errcheck //ignore error
+}
+
 // GetHealth returns the health status of the application
 func (c *wonderfulAPI) GetHealth(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()

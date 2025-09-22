@@ -1,3 +1,17 @@
+-- name: GetUserByID :one
+SELECT
+    id,
+    name,
+    email,
+    phone,
+    cell,
+    picture,
+    registration
+FROM
+    users
+WHERE
+    id = $1;
+
 -- name: ListUsers :many
 WITH cursor_data AS (
     -- Get cursor reference data in a single query

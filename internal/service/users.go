@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -74,4 +75,29 @@ func (s *userService) ListUsers(ctx context.Context, p repository.Params) ([]ent
 		})
 	}
 	return entitiesUsers, nil
+}
+
+func (s *userService) GetUserByID(ctx context.Context, id string) (*entities.User, error) {
+	// fetch user from the repository.
+	repoUser, err := s.repo.GetUserByID(ctx, id)
+	if err != nil {
+		// Check if it's a not found error from the repository
+		if errors.Is(err, repository.ErrUserNotFound) {
+			return nil, ErrUserNotFound
+		}
+		return nil, fmt.Errorf("service failed to get user by id: %w", err)
+	}
+
+	// convert repository user to entities user.
+	entitiesUser := &entities.User{
+		ID:           repoUser.ID.String(),
+		Name:         repoUser.Name,
+		Email:        repoUser.Email,
+		Phone:        repoUser.Phone,
+		Cell:         repoUser.Cell,
+		Picture:      repoUser.Picture,
+		Registration: repoUser.Registration,
+	}
+
+	return entitiesUser, nil
 }

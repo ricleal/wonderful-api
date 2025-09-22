@@ -3,12 +3,14 @@ package db
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 
 	"wonderful/internal/repository"
 	"wonderful/internal/repository/db/sqlc"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/segmentio/ksuid"
 )
@@ -52,6 +54,81 @@ func formatParameters(p repository.Params) sqlc.ListUsersParams {
 	return params
 }
 
+// convertRowToUser converts a database row to a repository.User struct.
+func convertRowToUser(r sqlc.GetUserByIDRow) (*repository.User, error) {
+	var picture map[string]string
+	if err := json.Unmarshal(r.Picture, &picture); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal picture: %w", err)
+	}
+
+	cell := ""
+	if r.Cell.Valid {
+		cell = r.Cell.String
+	}
+
+	id, err := ksuid.Parse(r.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse id: %w", err)
+	}
+
+	return &repository.User{
+		ID:           id,
+		Name:         r.Name,
+		Email:        r.Email,
+		Phone:        r.Phone,
+		Cell:         cell,
+		Picture:      picture,
+		Registration: r.Registration.Time,
+	}, nil
+}
+
+// convertListRowToUser converts a list query row to a repository.User struct.
+func convertListRowToUser(r sqlc.ListUsersRow) (*repository.User, error) {
+	var picture map[string]string
+	if err := json.Unmarshal(r.Picture, &picture); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal picture: %w", err)
+	}
+
+	cell := ""
+	if r.Cell.Valid {
+		cell = r.Cell.String
+	}
+
+	id, err := ksuid.Parse(r.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse id: %w", err)
+	}
+
+	return &repository.User{
+		ID:           id,
+		Name:         r.Name,
+		Email:        r.Email,
+		Phone:        r.Phone,
+		Cell:         cell,
+		Picture:      picture,
+		Registration: r.Registration.Time,
+	}, nil
+}
+
+// GetUserByID returns a single user by ID.
+func (s *UserStorage) GetUserByID(ctx context.Context, id string) (*repository.User, error) {
+	row, err := s.queries.GetUserByID(ctx, id)
+	if err != nil {
+		// Convert pgx.ErrNoRows to our repository error
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, repository.ErrUserNotFound
+		}
+		return nil, fmt.Errorf("failed to get user by id: %w", err)
+	}
+
+	user, err := convertRowToUser(row)
+	if err != nil {
+		return nil, err
+	}
+
+	return user, nil
+}
+
 // ListUsers returns a list of users.
 func (s *UserStorage) ListUsers(ctx context.Context, p repository.Params) ([]repository.User, error) {
 	params := formatParameters(p)
@@ -65,32 +142,13 @@ func (s *UserStorage) ListUsers(ctx context.Context, p repository.Params) ([]rep
 	for idx := range rows {
 		// to avoid creating a new variable for each iteration, use a pointer to the current row
 		r := rows[idx]
-		var picture map[string]string
-		// json unmarsal picture
-		if err := json.Unmarshal(r.Picture, &picture); err != nil {
-			// if there is an error, log it and continue to the next row
-			slog.Error("failed to unmarshal picture", "error", err)
-			continue
-		}
-		cell := ""
-		if r.Cell.Valid {
-			cell = r.Cell.String
-		}
-		id, err := ksuid.Parse(r.ID)
+		user, err := convertListRowToUser(r)
 		if err != nil {
 			// if there is an error, log it and continue to the next row
-			slog.Error("failed to parse id", "error", err)
+			slog.Error("failed to convert row to user", "error", err)
 			continue
 		}
-		users = append(users, repository.User{
-			ID:           id,
-			Name:         r.Name,
-			Email:        r.Email,
-			Phone:        r.Phone,
-			Cell:         cell,
-			Picture:      picture,
-			Registration: r.Registration.Time,
-		})
+		users = append(users, *user)
 	}
 	return users, nil
 }

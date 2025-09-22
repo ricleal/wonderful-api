@@ -67,6 +67,36 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /wonderfuls/{user_id}:
+    get:
+      summary: Get a single user by ID
+      description: Returns a single user identified by their unique ID.
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          description: The unique identifier of the user
+          schema:
+            type: string
+      responses:
+        '200':
+          description: User details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
 # Define schema for the Wonderful object
 components:

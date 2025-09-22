@@ -11,6 +11,46 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getUserByID = `-- name: GetUserByID :one
+SELECT
+    id,
+    name,
+    email,
+    phone,
+    cell,
+    picture,
+    registration
+FROM
+    users
+WHERE
+    id = $1
+`
+
+type GetUserByIDRow struct {
+	ID           string
+	Name         string
+	Email        string
+	Phone        string
+	Cell         pgtype.Text
+	Picture      []byte
+	Registration pgtype.Timestamp
+}
+
+func (q *Queries) GetUserByID(ctx context.Context, id string) (GetUserByIDRow, error) {
+	row := q.db.QueryRow(ctx, getUserByID, id)
+	var i GetUserByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Email,
+		&i.Phone,
+		&i.Cell,
+		&i.Picture,
+		&i.Registration,
+	)
+	return i, err
+}
+
 const listUsers = `-- name: ListUsers :many
 WITH cursor_data AS (
     -- Get cursor reference data in a single query

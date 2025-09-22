@@ -19,6 +19,9 @@ type ServerInterface interface {
 	// Get list of users
 	// (GET /wonderfuls)
 	GetWonderfuls(w http.ResponseWriter, r *http.Request, params GetWonderfulsParams)
+	// Get a single user by ID
+	// (GET /wonderfuls/{user_id})
+	GetWonderfulsUserId(w http.ResponseWriter, r *http.Request, userId string)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -34,6 +37,12 @@ func (_ Unimplemented) PostPopulate(w http.ResponseWriter, r *http.Request) {
 // Get list of users
 // (GET /wonderfuls)
 func (_ Unimplemented) GetWonderfuls(w http.ResponseWriter, r *http.Request, params GetWonderfulsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get a single user by ID
+// (GET /wonderfuls/{user_id})
+func (_ Unimplemented) GetWonderfulsUserId(w http.ResponseWriter, r *http.Request, userId string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -104,6 +113,32 @@ func (siw *ServerInterfaceWrapper) GetWonderfuls(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetWonderfuls(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// GetWonderfulsUserId operation middleware
+func (siw *ServerInterfaceWrapper) GetWonderfulsUserId(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var err error
+
+	// ------------- Path parameter "user_id" -------------
+	var userId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "user_id", chi.URLParam(r, "user_id"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "user_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetWonderfulsUserId(w, r, userId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -231,6 +266,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/wonderfuls", wrapper.GetWonderfuls)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/wonderfuls/{user_id}", wrapper.GetWonderfulsUserId)
 	})
 
 	return r
