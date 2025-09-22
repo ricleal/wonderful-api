@@ -114,8 +114,8 @@ func testConnectionWithRetry(ctx context.Context, pool *pgxpool.Pool) error {
 			}
 			slog.Warn("database ping failed, retrying", "attempt", i+1, "error", err)
 
-			// Use a separate context for the sleep to avoid affecting the main context
-			sleepCtx, cancel := context.WithTimeout(context.Background(), retryDelay)
+			// Create timeout context derived from parent to respect cancellation
+			sleepCtx, cancel := context.WithTimeout(ctx, retryDelay)
 			select {
 			case <-sleepCtx.Done():
 			case <-ctx.Done():
