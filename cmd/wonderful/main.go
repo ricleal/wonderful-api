@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -22,11 +21,12 @@ import (
 	openapiv1 "wonderful/internal/api/v1/openapi"
 	authmiddleware "wonderful/internal/middleware"
 	"wonderful/internal/repository/db"
+	"wonderful/internal/security"
 	"wonderful/internal/service"
 	"wonderful/internal/store"
 )
 
-func apiV1Router(root *chi.Mux, su service.UserService, hs service.HealthService) error {
+func apiV1Router(root *chi.Mux, su service.UserService, hs service.HealthService, secretManager security.SecretManager) error {
 	wonderfulAPI := apiv1.New(su, hs)
 
 	swagger, err := openapiv1.GetSwagger()
@@ -67,7 +67,7 @@ func apiV1Router(root *chi.Mux, su service.UserService, hs service.HealthService
 			r.Use(middleware.SetHeader("Content-Type", "application/json")) //nolint:goconst //ignore
 
 			// Apply JWT authentication to protected API routes
-			r.Use(authmiddleware.JWTAuth)
+			r.Use(authmiddleware.JWTAuth(secretManager))
 
 			// Register the API handlers directly
 			openapiv1.HandlerFromMux(wonderfulAPI, r)
@@ -94,14 +94,14 @@ func main() {
 	port := flag.Int("port", 8888, "Port for the HTTP server")
 	flag.Parse()
 
-	// Validate JWT secret is configured
-	jwtSecret := os.Getenv("JWT_SECRET")
-	if jwtSecret == "" {
-		slog.Error("JWT_SECRET environment variable is required")
-		return
-	}
-	if len(jwtSecret) < 32 {
-		slog.Error("JWT_SECRET must be at least 32 characters long")
+	// Initialize SecretManager with secure configuration
+	secretConfig := security.DefaultSecretConfig()
+	secretManager := security.NewSecretManager(secretConfig)
+	defer secretManager.Close()
+	
+	// Validate JWT secret is accessible and meets requirements
+	if _, err := secretManager.GetJWTSecret(ctx); err != nil {
+		slog.Error("JWT secret validation failed", "error", err)
 		return
 	}
 
@@ -127,7 +127,7 @@ func main() {
 	root.Use(middleware.StripSlashes)
 
 	// Set up API v1
-	if err := apiV1Router(root, su, hs); err != nil {
+	if err := apiV1Router(root, su, hs, secretManager); err != nil {
 		slog.Error("error setting up api v1 router", "error", err)
 		return
 	}

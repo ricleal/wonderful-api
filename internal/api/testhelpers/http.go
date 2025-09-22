@@ -18,7 +18,7 @@ const (
 	contentTypeKey   = "Content-Type"
 	contentTypeValue = "application/json" // Changed from application/vnd.api+json
 	// Default JWT secret for testing
-	TestJWTSecret = "test-jwt-secret-at-least-32-characters-long-for-security"
+	TestJWTSecret = "production-grade-jwt-signing-key-for-automated-testing-purposes"
 )
 
 // JWTClaims represents the JWT claims structure for testing

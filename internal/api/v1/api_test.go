@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"wonderful/internal/api/testhelpers"
 	api "wonderful/internal/api/v1"
@@ -13,6 +14,7 @@ import (
 	authmiddleware "wonderful/internal/middleware"
 	"wonderful/internal/repository/db"
 	"wonderful/internal/repository/db/test"
+	"wonderful/internal/security"
 	"wonderful/internal/service"
 	"wonderful/internal/store"
 
@@ -62,8 +64,17 @@ func (ts *APITestIntegrationSuite) SetupSuite() {
 	require.NoError(ts.T(), err)
 	r.Use(middleware.OapiRequestValidator(swagger))
 
-	// Apply JWT authentication middleware
-	r.Use(authmiddleware.JWTAuth)
+	// Set up test SecretManager with validation disabled for easier testing
+	secretConfig := &security.SecretConfig{
+		DefaultTTL:      15 * time.Minute,
+		RefreshInterval: 5 * time.Minute,
+		MinSecretLength: 32,
+		ValidateOnLoad:  false, // Disable validation for testing
+	}
+	secretManager := security.NewSecretManager(secretConfig)
+
+	// Apply JWT authentication middleware with test-friendly configuration
+	r.Use(authmiddleware.JWTAuth(secretManager))
 
 	openapi.HandlerFromMux(wonderfulAPI, r)
 	ts.server = httptest.NewServer(r)
