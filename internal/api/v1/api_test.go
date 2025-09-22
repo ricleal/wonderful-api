@@ -49,7 +49,8 @@ func (ts *APITestIntegrationSuite) SetupSuite() {
 	ts.s, err = db.NewStorage(ctx)
 	require.NoError(ts.T(), err)
 
-	s := store.NewPersistentStore(ts.s.Pool())
+	txMgr := db.NewTransactionManager(ts.s.Pool())
+	s := store.NewPersistentStore(ts.s.Pool(), txMgr)
 	c := http.Client{}
 	su := service.NewUserService(s, c)
 	sh := service.NewHealthService(s)
@@ -73,6 +74,13 @@ func (ts *APITestIntegrationSuite) TearDownSuite() {
 	err := test.TeardownDB(ctx, ts.container)
 	require.NoError(ts.T(), err)
 	ts.s.Close()
+}
+
+func (ts *APITestIntegrationSuite) SetupTest() {
+	// Clean the database before each test
+	ctx := context.Background()
+	_, err := ts.s.Pool().Exec(ctx, "DELETE FROM users")
+	require.NoError(ts.T(), err)
 }
 
 func (ts *APITestIntegrationSuite) TestUsers() {

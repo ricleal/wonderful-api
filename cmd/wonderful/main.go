@@ -115,7 +115,8 @@ func main() {
 
 	// we need to create a http client to fetch random users.
 	c := http.Client{Timeout: 10 * time.Second}
-	s := store.NewPersistentStore(dbServer.Pool())
+	txMgr := db.NewTransactionManager(dbServer.Pool())
+	s := store.NewPersistentStore(dbServer.Pool(), txMgr)
 	su := service.NewUserService(s, c)
 	hs := service.NewHealthService(s)
 

@@ -46,7 +46,8 @@ func (ts *StoreTestSuite) TearDownSuite() {
 
 func (ts *StoreTestSuite) TestStoreOK() {
 	ctx := context.Background()
-	s := store.NewPersistentStore(ts.s.Pool())
+	txMgr := db.NewTransactionManager(ts.s.Pool())
+	s := store.NewPersistentStore(ts.s.Pool(), txMgr)
 
 	usersStore := s.Users()
 
@@ -76,7 +77,8 @@ func (ts *StoreTestSuite) TestStoreOK() {
 
 func (ts *StoreTestSuite) TestStoreExecTxOK() {
 	ctx := context.Background()
-	s := store.NewPersistentStore(ts.s.Pool())
+	txMgr := db.NewTransactionManager(ts.s.Pool())
+	s := store.NewPersistentStore(ts.s.Pool(), txMgr)
 
 	err := s.ExecTx(ctx, func(st store.Store) error {
 		usersStore := st.Users()

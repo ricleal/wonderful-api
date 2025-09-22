@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"time"
 )
@@ -95,20 +96,99 @@ func FetchRandomUsers(ctx context.Context, client http.Client) (*RandomUser, err
 }
 
 func fetch(ctx context.Context, c http.Client, url string, r any) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
-	if err != nil {
-		return fmt.Errorf("failed to GET request: %w", err)
+	const (
+		maxRetries = 3
+		baseDelay  = 1 * time.Second
+		maxDelay   = 30 * time.Second
+	)
+
+	var lastErr error
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
+		if err != nil {
+			return fmt.Errorf("failed to create GET request: %w", err)
+		}
+
+		resp, err := c.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to GET response: %w", err)
+			if attempt < maxRetries {
+				delay := calculateBackoffDelay(attempt, baseDelay, maxDelay)
+				select {
+				case <-ctx.Done():
+					return fmt.Errorf("context cancelled during retry: %w", ctx.Err())
+				case <-time.After(delay):
+					continue
+				}
+			}
+			break
+		}
+
+		defer resp.Body.Close()
+
+		// Handle different HTTP status codes
+		switch resp.StatusCode {
+		case http.StatusOK:
+			if err := json.NewDecoder(resp.Body).Decode(r); err != nil {
+				return fmt.Errorf("failed to decode response: %w", err)
+			}
+			return nil
+
+		case http.StatusTooManyRequests:
+			lastErr = fmt.Errorf("rate limited (429), attempt %d/%d", attempt+1, maxRetries+1)
+
+			// Check for Retry-After header
+			retryAfter := resp.Header.Get("Retry-After")
+			var delay time.Duration
+			if retryAfter != "" {
+				if seconds, parseErr := time.ParseDuration(retryAfter + "s"); parseErr == nil {
+					delay = seconds
+				} else {
+					delay = calculateBackoffDelay(attempt, baseDelay, maxDelay)
+				}
+			} else {
+				delay = calculateBackoffDelay(attempt, baseDelay, maxDelay)
+			}
+
+			// Don't retry on the last attempt
+			if attempt < maxRetries {
+				select {
+				case <-ctx.Done():
+					return fmt.Errorf("context cancelled during rate limit backoff: %w", ctx.Err())
+				case <-time.After(delay):
+					continue
+				}
+			}
+
+		default:
+			return fmt.Errorf("unexpected HTTP status: %d", resp.StatusCode)
+		}
 	}
-	resp, err := c.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to GET response: %w", err)
+
+	return fmt.Errorf("failed after %d attempts: %w", maxRetries+1, lastErr)
+}
+
+// calculateBackoffDelay implements exponential backoff with jitter
+func calculateBackoffDelay(attempt int, baseDelay, maxDelay time.Duration) time.Duration {
+	// Exponential backoff: baseDelay * 2^attempt
+	delay := baseDelay * time.Duration(1<<uint(attempt))
+
+	// Cap the delay at maxDelay
+	if delay > maxDelay {
+		delay = maxDelay
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to GET HTTP status OK: %d", resp.StatusCode)
+
+	// Add jitter (randomness) to prevent thundering herd
+	// Use full jitter: random delay between 0 and the calculated delay
+	// This is simpler and safer than ± jitter
+	jitteredDelay := time.Duration(rand.Float64() * float64(delay))
+
+	// Ensure minimum delay is at least baseDelay/4 to avoid too short delays
+	minDelay := baseDelay / 4
+	if jitteredDelay < minDelay {
+		jitteredDelay = minDelay
 	}
-	if err := json.NewDecoder(resp.Body).Decode(r); err != nil {
-		return fmt.Errorf("failed to decode response: %w", err)
-	}
-	return nil
+
+	return jitteredDelay
 }

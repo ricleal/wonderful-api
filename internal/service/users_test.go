@@ -55,7 +55,8 @@ func (ts *UsersTestSuite) TearDownSuite() {
 }
 
 func (ts *UsersTestSuite) TestBulkLoad() {
-	s := store.NewPersistentStore(ts.s.Pool())
+	txMgr := db.NewTransactionManager(ts.s.Pool())
+	s := store.NewPersistentStore(ts.s.Pool(), txMgr)
 	c := http.Client{}
 	su := service.NewUserService(s, c)
 	ctx := context.Background()
@@ -74,7 +75,8 @@ func (ts *UsersTestSuite) TestListUsers() {
 	_, err := ts.s.Pool().Exec(ctx, insertStatement)
 	require.NoError(ts.T(), err)
 
-	s := store.NewPersistentStore(ts.s.Pool())
+	txMgr := db.NewTransactionManager(ts.s.Pool())
+	s := store.NewPersistentStore(ts.s.Pool(), txMgr)
 	c := http.Client{}
 	su := service.NewUserService(s, c)
 

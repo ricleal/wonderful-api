@@ -25,11 +25,11 @@ func NewHealthService(store store.Store) HealthService {
 
 // CheckDatabase checks if the database is healthy
 func (h *healthService) CheckDatabase(ctx context.Context) error {
-	// Use the store's database connection to ping
-	return h.store.Ping(ctx)
+	// Use the health repository to ping the database
+	return h.store.Health().Ping(ctx)
 }
 
 // GetDatabaseStats returns database connection statistics
 func (h *healthService) GetDatabaseStats() map[string]interface{} {
-	return h.store.GetConnectionStats()
+	return h.store.Health().GetConnectionStats()
 }
