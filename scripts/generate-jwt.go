@@ -64,17 +64,6 @@ func main() {
 		log.Fatalf("Error generating token: %v", err)
 	}
 
-	// Print token information
-	fmt.Printf("Generated JWT Token:\n")
-	fmt.Printf("Token: %s\n\n", tokenString)
-	fmt.Printf("Claims:\n")
-	fmt.Printf("  User ID: %s\n", *userID)
-	fmt.Printf("  Email: %s\n", *email)
-	fmt.Printf("  Issued At: %s\n", now.Format(time.RFC3339))
-	fmt.Printf("  Expires At: %s\n", now.Add(*duration).Format(time.RFC3339))
-	fmt.Printf("  Duration: %s\n", *duration)
-	fmt.Printf("\nUsage:\n")
-	fmt.Printf("  curl -H \"Authorization: Bearer %s\" http://localhost:8888/api/v1/wonderfuls\n", tokenString)
-	fmt.Printf("\nTo decode and verify:\n")
-	fmt.Printf("  echo '%s' | jwt decode -\n", tokenString)
+	// Print just the token
+	fmt.Print(tokenString)
 }
